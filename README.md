@@ -1,776 +1,340 @@
-# Matter Environmental Station
+# MatterEnvironmentalStation
 
-A Matter-compatible environmental monitoring station based on the **WeAct Studio ESP32-C3**, combining multiple environmental sensors, a PIR motion detector, and a 20x4 HD44780-compatible LCD.
+[![Build](https://github.com/ferreira-igor/MatterEnvironmentalStation/actions/workflows/compile-sketch.yml/badge.svg)](https://github.com/ferreira-igor/MatterEnvironmentalStation/actions/workflows/compile-sketch.yml)
+![Platform](https://img.shields.io/badge/Platform-ESP32-blue)
+![Framework](https://img.shields.io/badge/Framework-Arduino-green)
+![Matter](https://img.shields.io/badge/Matter-Compatible-brightgreen)
 
-The station measures:
+This project transforms an ESP32-based board into a Matter-compatible environmental monitoring station with a 20x4 LCD display. It provides seamless integration with smart home ecosystems like Alexa, Google Home, and Apple Home through the Matter protocol, while offering real-time environmental data visualization.
 
-- 🌡️ Temperature
-- 💧 Relative humidity
-- 🌡️ Atmospheric pressure
-- 🫧 VOC (Volatile Organic Compounds) index
-- 🚶 Motion / occupancy
+Designed for smart home enthusiasts and developers, this device automatically detects and commissions itself into your Matter network, providing temperature, humidity, pressure, VOC (Volatile Organic Compounds), and motion detection without complex configuration.
 
-Temperature, humidity, pressure, and motion are exposed through standard Matter endpoints for integration with compatible smart-home platforms. The VOC index is currently used locally to classify air quality on the LCD.
+The system features automatic commissioning method selection (BLE or WiFi), persistent Matter configuration, robust error recovery with automatic reboot, LED status indication for easy setup, and a 20x4 LCD display for local data visualization.
 
 ## Features
 
-- Matter support for smart-home integration
-- Temperature measurement using BME280
-- Relative humidity measurement using BME280
-- Atmospheric pressure measurement using BME280
-- VOC index measurement using SGP40
-- Motion detection using HW-MS03 PIR
-- 20x4 parallel HD44780 LCD
-- Custom LCD icons stored in CGRAM
-- Human-readable air-quality classification
-- Matter commissioning status on the LCD
-- Matter connection status on the LCD
-- Matter pairing code displayed while the device is not commissioned
-- BLE Matter commissioning on BLE-capable ESP32 configurations
-- WiFiManager fallback when BLE commissioning is disabled
-- Change-based Matter reporting to reduce unnecessary updates
-- Immediate Matter occupancy updates when motion state changes
-- Automatic Matter disconnection recovery
-- Built-in LED commissioning/status indicator
-- Non-blocking periodic tasks using `millis()`
-
----
+- **Matter Protocol Support**: Compatible with Matter-certified smart home hubs (Alexa, Google Home, Apple Home)
+- **Multi-Sensor Environmental Monitoring**:
+  - **Temperature** (BME280) - ±1°C accuracy, -40°C to +85°C range
+  - **Humidity** (BME280) - ±3% accuracy, 0-100% range
+  - **Pressure** (BME280) - ±1 hPa accuracy, 300-1100 hPa range
+  - **VOC Index** (SGP40) - Relative air quality measurement (0-500 scale)
+  - **Motion Detection** (HW-MS03 PIR) - 7m range, 120° detection angle
+- **20x4 LCD Display**: Shows sensor readings and system status with custom icons
+- **Automatic Commissioning**: Smart method selection based on hardware capabilities
+  - **BLE Commissioning** (ESP32-C3): Standard Matter commissioning via BLE - WiFi credentials provided by the commissioner app
+  - **WiFi Commissioning** (Fallback): Captive portal for manual WiFi configuration when BLE is unavailable
+- **Smart Reporting**: Configurable thresholds (1.0°C temperature, 3.0% humidity, 1.0 hPa pressure) to minimize network traffic
+- **Automatic Recovery**: Detects and handles Matter disconnections, reboots after 60 seconds of lost connectivity
+- **LED Status Indication**: Clear visual feedback - LED ON means ready for commissioning, LED OFF means commissioned
+- **Real-Time Display**: LCD shows current readings, motion status, and air quality classification
+- **Automatic Reconnection**: WiFi watchdog for reliable connectivity
+- **Error Handling**: Graceful failure recovery with automatic restarts
 
 ## Hardware
 
-The reference hardware is:
-
-| Component | Details |
-|---|---|
-| Microcontroller | WeAct Studio ESP32-C3 |
-| Environmental sensor | BME280 |
-| VOC sensor | SGP40 |
-| Motion sensor | HW-MS03 PIR |
-| Display | 20x4 HD44780-compatible LCD |
-| LCD interface | Parallel 4-bit |
-| I²C | GPIO 0 / GPIO 1 |
-
-### Sensors
-
-#### BME280
-
-The BME280 provides:
-
-- Temperature
-- Relative humidity
-- Atmospheric pressure
-
-Configured I²C address:
-
-```text
-0x76
-```
-
-The BME280 address can also be `0x77` on some modules, depending on the state of the `ADDR` pin.
-
-#### SGP40
-
-The SGP40 provides the VOC index used for the local air-quality indication.
-
-Default I²C address:
-
-```text
-0x59
-```
-
-The SGP40 measurement is temperature/humidity compensated using the current BME280 readings.
-
-#### HW-MS03
-
-The PIR sensor is connected to GPIO 10.
-
-| Signal | ESP32-C3 |
-|---|---|
-| VCC | 3.3 V |
-| GND | GND |
-| OUT | GPIO 10 |
-
-The firmware configures the input as:
-
-```cpp
-pinMode(pin_motion, INPUT_PULLDOWN);
-```
-
-Sensor output:
-
-```text
-HIGH = Motion detected
-LOW  = No motion
-```
-
-The sensor has an approximate warm-up time of 2 seconds after power-up and provides adjustable sensitivity/time-delay controls on typical HW-MS03 modules.
-
----
-
-# Pinout
-
-## I²C
-
-The BME280 and SGP40 share the same I²C bus.
-
-| ESP32-C3 | Function |
-|---:|---|
-| GPIO 0 | SCL |
-| GPIO 1 | SDA |
-
-```text
-ESP32-C3
-   │
-   ├── GPIO 0 ───── SCL ──┬── BME280
-   │                      └── SGP40
-   │
-   └── GPIO 1 ───── SDA ──┬── BME280
-                          └── SGP40
-```
-
-## LCD
-
-The LCD operates in 4-bit parallel mode.
-
-| LCD signal | ESP32-C3 |
-|---|---:|
-| RS | GPIO 7 |
-| EN | GPIO 6 |
-| D4 | GPIO 5 |
-| D5 | GPIO 4 |
-| D6 | GPIO 3 |
-| D7 | GPIO 2 |
-
-LCD `D0-D3` are not connected.
-
-Typical power connections:
-
-```text
-LCD VSS  → GND
-LCD VDD  → 5V
-LCD VO   → Contrast potentiometer
-LCD RS   → GPIO 7
-LCD EN   → GPIO 6
-LCD D4   → GPIO 5
-LCD D5   → GPIO 4
-LCD D6   → GPIO 3
-LCD D7   → GPIO 2
-```
-
-> Check the voltage requirements of your particular LCD module. The LCD signal levels must be compatible with the ESP32-C3 GPIOs.
-
-## Built-in LED
-
-The firmware uses:
-
-```cpp
-LED_BUILTIN
-```
-
-and assumes an active-low LED:
-
-```text
-LOW  = LED ON
-HIGH = LED OFF
-```
-
----
-
-# LCD interface
-
-The 20x4 LCD is used as a local dashboard.
-
-The four lines are organized as follows:
-
-```text
-┌────────────────────┐
-│ Matter / Pairing   │
-│ Motion status      │
-│ Temperature/H/R    │
-│ Air quality        │
-└────────────────────┘
-```
-
-## Row 1 — Matter status
-
-When the device has not been commissioned:
-
-```text
-[icon] Pin: 12345678 [icon]
-```
-
-The manual Matter pairing code is displayed.
-
-After commissioning:
-
-```text
-[icon]    Room Stats    [icon]
-```
-
-The icons at the sides indicate commissioning and Matter connection status.
-
-## Row 2 — Motion
-
-When motion is detected:
-
-```text
-  Motion Detected!
-```
-
-When there is no motion:
-
-```text
-====================
-```
-
-## Row 3 — Environmental measurements
-
-The display shows rounded integer values:
-
-```text
-[°C] 25C  [%] 65%  [hPa] 1013hPa
-```
-
-The firmware uses `lround()` for the displayed values.
-
-The underlying sensor values remain floating-point values.
-
-## Row 4 — Air quality
-
-The VOC index is converted into a human-readable message:
-
-| VOC Index | LCD message |
-|---:|---|
-| 0–100 | Air is Excellent |
-| 101–150 | Air is Good |
-| 151–250 | Air is Moderate |
-| 251–400 | Air is Poor |
-| >400 | Air is Unhealthy |
-
-The numeric VOC index itself is currently not displayed on the LCD.
-
----
-
-# LCD custom characters
-
-The LCD uses CGRAM custom characters for its icons.
-
-The firmware creates seven custom characters:
-
-| Index | Function |
-|---:|---|
-| `0` | Temperature |
-| `1` | Humidity |
-| `2` | Pressure |
-| `3` | Decommissioned |
-| `4` | Commissioned |
-| `5` | Disconnected |
-| `6` | Connected |
-
-They are created during initialization using:
-
-```cpp
-lcd.createChar(...)
-```
-
-and displayed with:
-
-```cpp
-lcd.write(...)
-```
-
-Because a standard HD44780 LCD only provides eight custom-character slots, the project uses seven of them.
-
----
-
-# Matter endpoints
-
-The station creates four Matter endpoints:
-
-```cpp
-MatterTemperatureSensor temperatureSensor;
-MatterHumiditySensor humiditySensor;
-MatterPressureSensor pressureSensor;
-MatterOccupancySensor occupancySensor;
-```
-
-They represent:
-
-```text
-Matter Environmental Station
-├── Temperature
-├── Humidity
-├── Pressure
-└── Occupancy
-```
-
-The VOC index is **not currently exposed through Matter**. It is used locally by the firmware to generate the LCD air-quality description.
-
-## Why VOC is not exposed
-
-The current implementation does not create a dedicated Matter VOC/air-quality endpoint.
-
-Adding such an endpoint would depend on the Matter clusters supported by the ESP32 Arduino Matter implementation and by the target smart-home ecosystems.
-
----
-
-# Matter reporting strategy
-
-The firmware reads all sensors every second, but does not send every measurement to Matter.
-
-Instead, it compares the current value with the last value reported.
-
-This significantly reduces unnecessary Matter updates caused by normal sensor fluctuations.
-
-## Temperature
-
-Matter is updated when the temperature changes by at least:
-
-```text
-1.0 °C
-```
-
-Configured as:
-
-```cpp
-const float temperature_diff = 1.0f;
-```
-
-## Humidity
-
-Matter is updated when humidity changes by at least:
-
-```text
-3.0 %
-```
-
-Configured as:
-
-```cpp
-const float humidity_diff = 3.0f;
-```
-
-## Pressure
-
-Matter is updated when pressure changes by at least:
-
-```text
-1.0 hPa
-```
-
-Configured as:
-
-```cpp
-const float pressure_diff = 1.0f;
-```
-
-## Occupancy
-
-Motion is handled differently.
-
-Any change in state is reported:
-
-```text
-No motion → Motion
-Motion → No motion
-```
-
-This means occupancy does not use a numeric threshold.
-
----
-
-# Sensor sampling and Matter updates
-
-The firmware separates sensor sampling from Matter reporting.
-
-Every second:
-
-```text
-Read BME280
-Read SGP40
-Read PIR
-      │
-      ▼
-Compare against last Matter values
-      │
-      ├── Significant change → Update Matter
-      │
-      └── Small change → Do nothing
-```
-
-This allows the local LCD and air-quality calculation to receive frequent measurements while avoiding excessive Matter traffic.
-
----
-
-# SGP40 VOC measurement
-
-The SGP40 is read using:
-
-```cpp
-sgp.measureVocIndex(current_temperature, current_humidity);
-```
-
-The current BME280 temperature and humidity measurements are passed to the SGP40 library for environmental compensation.
-
-The resulting VOC index is stored in:
-
-```cpp
-int32_t current_voc;
-```
-
-The value is primarily used for the LCD air-quality classification.
-
-## Important interpretation
-
-The VOC Index is a **relative air-quality indicator**, not a direct concentration measurement in ppm.
-
-Higher values indicate a higher relative VOC condition according to the SGP40's index algorithm.
-
-The thresholds used by this project are intended as a simple user-facing classification rather than a certified air-quality standard.
-
----
-
-# Matter commissioning
-
-The project supports two commissioning approaches depending on the ESP32 build configuration.
-
-## BLE commissioning
-
-When:
-
-```cpp
-CONFIG_ENABLE_CHIPOBLE
-```
-
-is enabled, Matter commissioning uses BLE.
-
-The Matter controller supplies the Wi-Fi credentials during commissioning.
-
-Typical flow:
-
-```text
-Power on
-   │
-   ▼
-Matter device starts
-   │
-   ▼
-Open Alexa / Google Home / Apple Home
-   │
-   ▼
-Add Matter device
-   │
-   ▼
-Scan QR code or enter pairing code
-   │
-   ▼
-Commissioner provides Wi-Fi credentials
-   │
-   ▼
-Device joins Wi-Fi
-   │
-   ▼
-Matter endpoints become available
-```
-
-This is the preferred commissioning method for the ESP32-C3.
-
-## WiFiManager fallback
-
-When BLE Matter commissioning is disabled:
-
-```cpp
-#if !CONFIG_ENABLE_CHIPOBLE
-```
-
-the firmware includes WiFiManager.
-
-The captive portal uses:
-
-```text
-Configuration portal timeout: 180 seconds
-Wi-Fi connection timeout: 30 seconds
-```
-
-If the device cannot connect to Wi-Fi through the portal, it restarts.
-
-This mode is useful for:
-
-- ESP32 boards without BLE support;
-- development;
-- debugging;
-- testing alternative commissioning flows.
-
----
-
-# Pairing information
-
-When the device has not been commissioned, the firmware prints the Matter pairing information to the Serial Monitor:
-
-```text
-Matter Node is not commissioned yet.
-Initiate the device discovery in your Matter environment.
-Commission it to your Matter hub with the manual pairing code or QR code
-Manual pairing code: XXXXXXXX
-QR code URL: ...
-```
-
-The manual pairing code is also shown on the LCD.
-
----
-
-# LED status
-
-The built-in LED provides a simple Matter commissioning indicator.
-
-| State | LED |
-|---|---|
-| Device not commissioned | ON |
-| Device commissioned | OFF |
-
-The LED is controlled by `checkMatter()` every 15 seconds.
-
----
-
-# Matter connection monitoring and recovery
-
-The firmware checks Matter status every:
-
-```text
-15 seconds
-```
-
-using:
-
-```cpp
-Matter.isDeviceCommissioned()
-Matter.isDeviceConnected()
-```
-
-The firmware distinguishes between:
-
-### Not commissioned
-
-```text
-Commissioned = false
-```
-
-The LED remains ON and the pairing information is available.
-
-### Commissioned and connected
-
-```text
-Commissioned = true
-Connected = true
-```
-
-Normal operation.
-
-### Commissioned but disconnected
-
-```text
-Commissioned = true
-Connected = false
-```
-
-The firmware starts a disconnection counter.
-
-If the device remains disconnected for approximately:
-
-```text
-60 seconds
-```
-
-it performs:
-
-```cpp
-Matter.decommission();
-```
-
-then waits one second and restarts the ESP32.
-
-## Important consequence
-
-This recovery mechanism deliberately removes the Matter commissioning state.
-
-After such a recovery, the device may need to be commissioned again.
-
-This is an aggressive recovery strategy intended for cases where the Matter connection becomes stuck rather than simply experiencing a short network interruption.
-
----
-
-# Timing architecture
-
-The firmware uses `millis()` to schedule independent periodic operations.
-
-No recurring `delay()` is used in the main loop.
-
-| Task | Interval |
-|---|---:|
-| Sensor reading | 1 second |
-| LCD update | 5 seconds |
-| Matter connection check | 15 seconds |
-| Matter disconnection timeout | 60 seconds |
-
-## Main loop
-
-Conceptually:
-
-```text
-loop()
- │
- ├── Every 1 s
- │     ├── Read sensors
- │     └── Update Matter if necessary
- │
- ├── Every 5 s
- │     └── Refresh LCD
- │
- └── Every 15 s
-       └── Check Matter connection
-```
-
-This approach keeps the firmware responsive and avoids unnecessarily blocking the Matter stack.
-
----
-
-# Startup sequence
-
-The firmware initializes the system in the following order:
-
-```text
-1. Configure GPIOs
-2. Start Serial
-3. Initialize LCD
-4. Create LCD custom characters
-5. Initialize I²C
-6. Initialize BME280
-7. Initialize SGP40
-8. Configure Wi-Fi if WiFiManager mode is active
-9. Initialize Matter endpoints
-10. Start Matter
-11. Display commissioning information
-12. Enter main loop
-```
-
----
-
-# Error handling
-
-## BME280 initialization
-
-If the BME280 cannot be initialized:
-
-```text
-Error initializing BME280 sensor! Check your wiring!
-```
-
-is printed.
-
-The firmware currently continues execution.
-
-## SGP40 initialization
-
-If the SGP40 cannot be initialized:
-
-```text
-Error initializing SGP40 sensor! Check your wiring!
-```
-
-is printed.
-
-The firmware continues execution.
-
-## Sensor read errors
-
-Invalid BME280 values are detected using `isnan()`.
-
-Examples:
-
-```text
-Error reading temperature!
-Error reading humidity!
-Error reading pressure!
-```
-
-The previous valid value is retained.
-
-The same validation pattern is used for the VOC reading.
-
-> If a sensor fails during startup, the current firmware does not enter a dedicated sensor-error state or automatically reinitialize the sensor. This is a possible future improvement.
-
----
-
-# Software requirements
-
-The project was developed with:
-
-- Arduino IDE `2.3.10`
-- ESP32 Arduino Core `3.3.11`
-
-## Required libraries
-
-| Library | Referenced version | Purpose |
-|---|---:|---|
-| Adafruit BME280 Library | `2.3.0` | Temperature, humidity and pressure |
-| Adafruit SGP40 | `1.1.4` | VOC index |
-| LiquidCrystal | Arduino library | HD44780 LCD |
-| Matter | ESP32 Arduino Core | Matter protocol |
-| WiFiManager | `2.0.17` | Wi-Fi configuration fallback |
-
-WiFiManager is only compiled when BLE commissioning is disabled.
-
----
-
-# Installation
-
-## 1. Install Arduino IDE
-
-Install Arduino IDE 2.x.
-
-## 2. Install ESP32 support
-
-Install the ESP32 Arduino Core and select the appropriate ESP32-C3 board.
-
-The reference board is:
-
-```text
-WeAct Studio ESP32-C3
-```
-
-## 3. Install libraries
-
-Install:
-
-- Adafruit BME280 Library
-- Adafruit SGP40
-- WiFiManager, if required
-- LiquidCrystal
-
-Matter support comes from the ESP32 Arduino environment.
-
----
-
-# Configuration constants
-
-Important values currently defined in the firmware:
-
-| Constant | Value | Purpose |
-|---|---:|---|
-| `pin_i2c_scl` | `0` | I²C clock |
-| `pin_i2c_sda` | `1` | I²C data |
-| `pin_motion` | `10` | PIR input |
-| `pin_lcd_d7` | `2` | LCD D7 |
-| `pin_lcd_d6` | `3` | LCD D6 |
-| `pin_lcd_d5` | `4` | LCD D5 |
-| `pin_lcd_d4` | `5` | LCD D4 |
-| `pin_lcd_en` | `6` | LCD Enable |
-| `pin_lcd_rs` | `7` | LCD Register Select |
-| BME280 address | `0x76` | BME280 I²C address |
-| Temperature threshold | `1.0 °C` | Matter reporting |
-| Humidity threshold | `3.0 %` | Matter reporting |
-| Pressure threshold | `1.0 hPa` | Matter reporting |
-| Sensor interval | `1000 ms` | Sensor sampling |
-| LCD interval | `5000 ms` | LCD refresh |
-| Matter check | `15000 ms` | Connection monitoring |
-| Matter timeout | `60000 ms` | Disconnection recovery |
+### Required Components
+
+- ESP32 Development Board (Tested on WeAct Studio ESP32C3, compatible with most ESP32 boards)
+- BME280 Temperature, Humidity and Pressure Sensor (I2C address 0x76)
+- SGP40 VOC Index Sensor (I2C address 0x59)
+- HW-MS03 PIR Motion Sensor (Digital output, 3.3V compatible)
+- 20x4 LCD Display (HD44780-compatible, parallel interface)
+- USB Cable for programming and power
+- Connecting wires
+
+### Supported Boards
+
+The code is tested on the WeAct Studio ESP32C3 but should work on any ESP32-based board with the following:
+- Built-in LED (configurable via LED_BUILTIN)
+- I2C pins (configurable via pin_i2c_scl and pin_i2c_sda)
+- Parallel GPIO pins for LCD (configurable)
+- BLE support (for automatic commissioning) or fallback to WiFi commissioning
+
+### Sensor Compatibility
+
+The BME280 and SGP40 sensors are recommended and tested. Other sensors may work with minor code modifications:
+- **BME280**: Recommended (temperature, humidity, pressure)
+- **BME680**: Alternative (temperature, humidity, pressure, gas resistance)
+- **SGP30**: Alternative VOC sensor (would require code changes)
+- **AHT10/AHT20**: Alternative humidity/temperature sensor (would require code changes)
+- **HC-SR501**: Compatible PIR motion sensor (5V logic level - requires level shifting)
+
+## Wiring
+
+The project requires multiple connections for sensors and display:
+
+### I2C Sensors (BME280 and SGP40)
+
+| Component | ESP32 Pin | Description |
+|-----------|-----------|-------------|
+| BME280 VCC | 3.3V | Power supply |
+| BME280 GND | GND | Ground |
+| BME280 SCL | GPIO 0 | I2C Clock (WeAct Studio ESP32C3) |
+| BME280 SDA | GPIO 1 | I2C Data (WeAct Studio ESP32C3) |
+| SGP40 VCC | 3.3V | Power supply |
+| SGP40 GND | GND | Ground |
+| SGP40 SCL | GPIO 0 | I2C Clock (shared with BME280) |
+| SGP40 SDA | GPIO 1 | I2C Data (shared with BME280) |
+
+### LCD Display (Parallel 4-bit Mode)
+
+| LCD Pin | ESP32 Pin | Description |
+|---------|-----------|-------------|
+| VSS | GND | Ground |
+| VDD | 5V or 3.3V | Power supply (check LCD specs) |
+| V0 | Potentiometer | Contrast adjustment (10kΩ) |
+| RS | GPIO 7 | Register Select |
+| RW | GND | Read/Write (tied to GND for write-only) |
+| EN | GPIO 6 | Enable |
+| D4 | GPIO 5 | Data line 4 |
+| D5 | GPIO 4 | Data line 5 |
+| D6 | GPIO 3 | Data line 6 |
+| D7 | GPIO 2 | Data line 7 |
+| BLA | 5V or 3.3V | Backlight power |
+| BLK | GND | Backlight ground |
+
+### HW-MS03 PIR Motion Sensor
+
+| Component | ESP32 Pin | Description |
+|-----------|-----------|-------------|
+| HW-MS03 VCC | 5.0V | Power supply |
+| HW-MS03 GND | GND | Ground |
+| HW-MS03 OUT | GPIO 10 | Digital output (HIGH = motion) |
+
+### Built-in LED
+
+| Component | ESP32 Pin | Description |
+|-----------|-----------|-------------|
+| Built-in LED | LED_BUILTIN | Status indicator (active LOW) |
+
+**Note**: For other ESP32 boards, adjust the pins in the code:
+- I2C pins: Change `pin_i2c_scl` and `pin_i2c_sda` (default: 0, 1)
+- LCD pins: Change `pin_lcd_rs`, `pin_lcd_en`, `pin_lcd_d4`-`pin_lcd_d7` (default: 7, 6, 5, 4, 3, 2)
+- Motion sensor: Change `pin_motion` (default: 10)
+
+## Flashing
+
+### Method 1: Pre-compiled Binary
+
+1. Download the latest binary from the Releases page
+
+2. Install esptool:
+   ```bash
+   pipx install esptool
+   ```
+
+3. Using esptool:
+   ```bash
+   esptool --port /dev/ttyUSB0 erase-flash
+   esptool --port /dev/ttyUSB0 write-flash 0x0 MatterEnvironmentalStation.ino.merged.bin
+   ```
+
+   Replace /dev/ttyUSB0 with your actual serial port.
+
+### Method 2: Using Arduino IDE
+
+1. **Install ESP32 Core**:
+   - Open Arduino IDE
+   - Go to File > Preferences
+   - Add https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json to Additional Boards Manager URLs
+   - Go to Tools > Board > Boards Manager
+   - Search for ESP32 and install esp32 by Espressif Systems (v3.3.11 or later)
+
+2. **Install Required Libraries**:
+   - Open Sketch > Include Library > Manage Libraries
+   - Install the following libraries:
+     - Adafruit BME280 Library by Adafruit (v2.3.0)
+     - Adafruit SGP40 by Adafruit (v1.1.4)
+     - LiquidCrystal by Arduino (v1.0.7) - built-in
+     - Matter by Arduino (v1.2.5 or later)
+     - WiFiManager by tzapu (v2.0.17) - only required when BLE commissioning is disabled
+
+3. **Configure and Upload**:
+   - Open MatterEnvironmentalStation.ino in Arduino IDE
+   - Select your ESP32 board: Tools > Board > ESP32 Arduino > [Your Board Model]
+   - Select the correct port: Tools > Port > [Your USB Port]
+   - Select "Erase All Flash Before Sketch Upload: Enabled"
+   - Select "Partition Scheme: Huge APP (3MB No OTA/1MB SPIFFS)"
+   - Click Upload (arrow icon) to compile and flash
+
+4. **Monitor Serial Output**:
+   - Open Tools > Serial Monitor
+   - Set baud rate to 115200
+   - Observe startup logs and sensor readings
+
+## Startup
+
+### First Boot and Commissioning
+
+The commissioning method depends on your ESP32 board and the CONFIG_ENABLE_CHIPOBLE flag:
+
+#### Method 1: BLE Commissioning (Recommended - ESP32-C3)
+
+1. **Power the Device**: Connect the ESP32 via USB or power supply
+2. **LED Behavior**:
+   - LED ON (LOW): Device is NOT commissioned - ready for setup
+   - LED OFF (HIGH): Device IS commissioned - operating normally
+3. **LCD Display**: Shows commissioning status and pairing code
+4. **Commission via Smart Home App**:
+   - Open your Matter-compatible app (Alexa, Google Home, Apple Home)
+   - Add a new device and scan the QR code displayed in the serial monitor
+   - Or enter the manual pairing code shown on the LCD and serial output
+   - The app will provide WiFi credentials via BLE
+   - Wait for commissioning to complete
+   - The LED will turn OFF (HIGH) once commissioned
+   - LCD will change to "Room Stats" display mode
+
+#### Method 2: WiFi Commissioning (Fallback - no BLE)
+
+1. **Power the Device**: Connect the ESP32 via USB or power supply
+2. **Connect to Captive Portal**:
+   - The device creates a WiFi access point (usually named MatterEnvironmental or similar)
+   - Connect your phone or computer to this network
+3. **Configure WiFi**:
+   - Open a web browser and navigate to the captive portal (usually 192.168.4.1)
+   - Enter your WiFi credentials
+   - Device will connect to your WiFi network
+4. **Commission via Matter**:
+   - Use your Matter-compatible app to add the device
+   - Scan the QR code or enter the manual pairing code shown on the LCD and serial monitor
+   - The device will be commissioned to your Matter hub
+
+### LCD Display Information
+
+After startup and commissioning, the 20x4 LCD display shows:
+
+**Row 0 (Status Line)**:
+- Left icon: Commissioned () or Decommissioned () status
+- Center text: "Pin: XXXXXXXX" (pairing code) when uncommissioned, or "Room Stats" when commissioned
+- Right icon: Connected () or Disconnected () status
+
+**Row 1 (Motion Status)**:
+- Displays "Motion Detected!" when HW-MS03 PIR sensor triggers
+- Displays "====================" when no motion detected
+
+**Row 2 (Sensor Readings)**:
+- Temperature (℃) with custom icon
+- Humidity (%) with custom icon  
+- Pressure (hPa) with custom icon
+
+**Row 3 (Air Quality)**:
+- Based on VOC index from SGP40:
+  - **Excellent** (≤ 100): "Air is Excellent"
+  - **Good** (101-150): "Air is Good"
+  - **Moderate** (151-250): "Air is Moderate"
+  - **Poor** (251-400): "Air is Poor"
+  - **Unhealthy** (> 400): "Air is Unhealthy"
+
+### Commissioning Information
+
+After startup, the serial monitor will display:
+- Manual pairing code (numeric code for manual entry)
+- QR code URL (for scanning with smart home apps)
+
+The LCD also displays the pairing code on the top line when uncommissioned.
+
+### LED Status Indicator
+
+| LED State | Pin State | Meaning |
+|-----------|-----------|---------|
+| ON (LOW) | 0 | Device NOT commissioned - ready for setup |
+| OFF (HIGH) | 1 | Device IS commissioned - operating normally |
+
+## Configuration
+
+### Sensor Reporting Thresholds
+
+The device uses smart reporting to minimize network traffic:
+
+- **Temperature**: Reports when changes exceed 1.0°C (BME280 accuracy)
+- **Humidity**: Reports when changes exceed 3.0% (BME280 accuracy)
+- **Pressure**: Reports when changes exceed 1.0 hPa (BME280 accuracy)
+- **Motion**: Reports immediately on any state change
+
+These thresholds can be adjusted in the code:
+- `temperature_diff`: Adjust as needed (default: 1.0f)
+- `humidity_diff`: Adjust as needed (default: 3.0f)
+- `pressure_diff`: Adjust as needed (default: 1.0f)
+
+### Timing Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Sensors Read Interval | 1 second | How often sensor is read |
+| Display Update Interval | 5 seconds | How often LCD is updated |
+| Matter Check Interval | 15 seconds | How often connection is verified |
+| Matter Timeout | 3 minutes | Max disconnection time before reboot |
+| WiFi Manager Timeout | 3 minutes | Captive portal timeout (WiFi method) |
+
+### LCD Custom Icons
+
+The firmware creates custom LCD icons for a more intuitive display:
+
+| Icon | Description | CGRAM Index |
+|------|-------------|-------------|
+| | Temperature symbol | 0 |
+| | Humidity symbol | 1 |
+| | Pressure symbol | 2 |
+| | Decommissioned status | 3 |
+| | Commissioned status | 4 |
+| | Disconnected status | 5 |
+| | Connected status | 6 |
+
+## Notes
+
+### Important Considerations
+
+- **Matter Compatibility**: Ensure your smart home hub supports Matter (most modern hubs do)
+- **Network Requirements**: Device must be on the same network as your Matter hub
+- **BLE Commissioning**: Requires BLE support on the ESP32 (ESP32-C3 has built-in BLE)
+- **Power Requirements**: ESP32 boards typically require 5V via USB or 3.3V from a regulated power supply
+- **Sensor Placement**: For accurate readings, place the sensors away from heat sources and in open air
+- **LCD Contrast**: May need adjustment via potentiometer for optimal readability
+- **SGP40 Warm-Up**: VOC sensor requires stabilization time after power-on
+
+### Performance and Limitations
+
+- **Reading Frequency**: Sensors are read every 1 second - sufficient for environmental monitoring
+- **Reporting Frequency**: Reports are sent only when thresholds are exceeded, reducing network traffic
+- **Connection Recovery**: Automatic reboot after 60 seconds of disconnection ensures reliability
+- **Memory Usage**: Matter library requires significant flash - use appropriate partition scheme
+- **LCD Update Rate**: 5-second interval reduces display flicker and microcontroller load
+
+### Security Considerations
+
+- **Matter Security**: Uses Matter's built-in security and encryption
+- **WiFi Credentials**: Stored in ESP32's non-volatile storage
+- **BLE Commissioning**: Secure pairing using Matter's standard commissioning process
+- **WiFi Manager**: Only active during setup, not during normal operation
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| BME280 not initializing | Check I2C wiring; verify address (0x76); ensure 3.3V power |
+| SGP40 not initializing | Check I2C wiring; verify address (0x59); allow warm-up time |
+| LCD not displaying | Check contrast potentiometer; verify wiring; check power supply |
+| LCD shows garbled characters | Check LCD data pins (D4-D7); verify Enable and Register Select pins |
+| LED stays ON continuously | Device is not commissioned - complete commissioning process |
+| Commissioning fails | Verify Matter hub supports the device; check network connectivity |
+| No sensor readings | Check I2C wiring; verify I2C addresses; check library versions |
+| Device doesn't appear in Matter app | Ensure device is on the same network; reboot device and try again |
+| Frequent disconnections | Check WiFi signal strength; adjust device placement |
+| Motion sensor not detecting | Check wiring; verify pin 10; adjust sensitivity potentiometer |
+| Serial output shows no QR code | Ensure partition scheme has enough space for Matter library |
+| LCD backlight not working | Check BLA/BLK connections; verify power supply |
+
+### VOC Index Guide
+
+The SGP40 VOC index provides relative air quality information:
+
+| VOC Index | Air Quality | Description |
+|-----------|-------------|-------------|
+| 0-100 | Excellent | Very low volatile organic compounds |
+| 101-150 | Good | Acceptable air quality |
+| 151-250 | Moderate | Some VOCs present |
+| 251-400 | Poor | Elevated VOCs - consider ventilation |
+| > 400 | Unhealthy | High VOCs - ventilate immediately |
+
+Note that VOC index is relative and requires baseline calibration for absolute measurements.

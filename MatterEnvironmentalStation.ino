@@ -283,17 +283,17 @@ bool reported_motion = false;
 // Timing Constants
 //=============================================================================
 
-/** @brief Interval between sensor readings (1 second) */
+/** @brief Interval between sensor readings */
 const uint32_t sensors_read_interval = 1000;
 
-/** @brief Interval for LCD display updates (5 seconds) */
+/** @brief Interval for LCD display updates */
 const uint32_t display_update_interval = 5000;
 
-/** @brief Interval for Matter connection checks (15 seconds) */
+/** @brief Interval for Matter connection checks */
 const uint32_t matter_check_interval = 15000;
 
-/** @brief Maximum time without Matter connection before reboot (60 seconds) */
-const uint32_t matter_timeout = 60000;
+/** @brief Maximum time without Matter connection before reboot */
+const uint32_t matter_timeout = 180000;
 
 /**
  * @brief Counter for consecutive Matter disconnections
@@ -567,7 +567,7 @@ MatterOccupancySensor occupancySensor;
  *   * Detection angle: 120 degrees
  *   * Warm-up time: ~2 seconds
  * 
- * @note Called every 1 second (sensors_read_interval)
+ * @note Called every sensors_read_interval
  * @note SGP40 reading uses current temperature and humidity for compensation
  * @note All readings are validated (checked for NaN)
  * 
@@ -611,20 +611,14 @@ void readSensors() {
   }
 
   // Read VOC index from SGP40 (compensated with temperature and humidity)
-  int32_t v = sgp.measureVocIndex(current_temperature, current_humidity);
-
-  if (!isnan(v)) {
-    current_voc = v;
-    Serial.print("VOC Index: ");
-    Serial.println(current_voc);
-  } else {
-    Serial.println("Error reading VOCs!");
-  }
+  current_voc = sgp.measureVocIndex(current_temperature, current_humidity);
+  Serial.print("VOC Index: ");
+  Serial.println(current_voc);
 
   // Read HW-MS03 PIR motion sensor state
   // HIGH = motion detected, LOW = no motion
   current_motion = digitalRead(pin_motion);
-  Serial.print("Motion (HW-MS03): ");
+  Serial.print("Motion: ");
   Serial.println(current_motion);
 }
 
@@ -681,7 +675,7 @@ void readSensors() {
  * - 251-400: Poor air quality
  * - > 400: Unhealthy air quality
  * 
- * @note Called every 5 seconds (display_update_interval)
+ * @note Called every display_update_interval
  * @note Uses lround() for rounding sensor values to integers
  * @note LCD memory positions: (col, row) starting from (0,0)
  * @note Custom characters are stored in LCD CGRAM (indices 0-7)
@@ -827,10 +821,10 @@ void updateMatter() {
  * 
  * Recovery Strategy:
  * - Counts consecutive check cycles where device is commissioned but disconnected
- * - If disconnection persists for matter_timeout (60s), decommission and reboot
+ * - If disconnection persists for matter_timeout, decommission and reboot
  * - This forces the device to be re-added to the Matter network
  * 
- * @note Check interval is defined by matter_check_interval (15 seconds)
+ * @note Check interval is defined by matter_check_interval
  * @note matter_disconnect_counter increments each check cycle when disconnected
  * @note Counter resets to 0 when connection is restored
  */
@@ -853,7 +847,7 @@ void checkMatter() {
 
     // If disconnected for longer than matter_timeout
     if (matter_disconnect_counter >= (matter_timeout / matter_check_interval)) {
-      Serial.println("Device disconnected for 1 minute - Decommissioning and rebooting...");
+      Serial.println("The connection was lost! Decommissioning and rebooting...");
 
       // Decommission the device (removes it from the Matter network)
       Matter.decommission();
@@ -973,13 +967,15 @@ void setup() {
   Wire.begin(pin_i2c_sda, pin_i2c_scl);
 
   // Initialize BME280 (temperature, humidity, pressure)
-  if (!bme.begin(bme280_addr)) {
+  while (!bme.begin(bme280_addr)) {
     Serial.println("Error initializing BME280 sensor! Check your wiring!");
+    delay(1000);
   }
 
   // Initialize SGP40 (VOC index sensor)
-  if (!sgp.begin()) {
+  while (!sgp.begin()) {
     Serial.println("Error initializing SGP40 sensor! Check your wiring!");
+    delay(1000);
   }
 
   //-----------------------------------------------------------------------
@@ -1065,19 +1061,19 @@ void setup() {
  * 
  * Manages three periodic tasks using non-blocking timers:
  * 
- * 1. Sensor Reading (every 1 second):
+ * 1. Sensor Reading:
  *    - Reads temperature, humidity, pressure from BME280
  *    - Reads VOC index from SGP40
  *    - Reads motion state from HW-MS03 PIR sensor
  *    - Updates Matter endpoints if changes exceed thresholds
  * 
- * 2. LCD Display Update (every 5 seconds):
+ * 2. LCD Display Update:
  *    - Updates all LCD display lines (20x4 characters)
  *    - Shows Matter status, sensor values, and air quality
  *    - Reduces display flicker by not updating every second
  *    - Custom icons are displayed using lcd.write(index)
  * 
- * 3. Matter Connection Check (every 15 seconds):
+ * 3. Matter Connection Check:
  *    - Monitors commission and connection status
  *    - Handles disconnection recovery
  *    - Updates LED status (Active LOW)
@@ -1090,20 +1086,20 @@ void setup() {
 void loop() {
   uint32_t current_time = millis();
 
-  // Task 1: Read sensors every second
+  // Task 1: Read sensors
   if (current_time - last_sensors_read >= sensors_read_interval) {
     last_sensors_read = current_time;
     readSensors();
     updateMatter();
   }
 
-  // Task 2: Update LCD display every 5 seconds
+  // Task 2: Update LCD display
   if (current_time - last_display_update >= display_update_interval) {
     last_display_update = current_time;
     updateDisplay();
   }
 
-  // Task 3: Check Matter connection every 15 seconds
+  // Task 3: Check Matter connection
   if (current_time - last_matter_check >= matter_check_interval) {
     last_matter_check = current_time;
     checkMatter();
