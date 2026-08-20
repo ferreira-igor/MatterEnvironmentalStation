@@ -49,6 +49,7 @@ jobs:
           arduino-cli lib install "WiFiManager@2.0.17"
           arduino-cli lib install "Adafruit BME280 Library@2.3.0"
           arduino-cli lib install "Adafruit SGP40 Sensor@1.1.4"
+          arduino-cli lib install "LiquidCrystal@1.0.7"
 
       - name: Compile Firmware
         run: |
