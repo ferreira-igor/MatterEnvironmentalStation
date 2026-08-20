@@ -205,18 +205,18 @@ The commissioning method depends on your ESP32 board and the CONFIG_ENABLE_CHIPO
 After startup and commissioning, the 20x4 LCD display shows:
 
 **Row 0 (Status Line)**:
-- Left icon: Commissioned () or Decommissioned () status
+- Left icon: Commissioned (✔️) or Decommissioned (❌) status
 - Center text: "Pin: XXXXXXXX" (pairing code) when uncommissioned, or "Room Stats" when commissioned
-- Right icon: Connected () or Disconnected () status
+- Right icon: Connected (✔️) or Disconnected (❌) status
 
 **Row 1 (Motion Status)**:
 - Displays "Motion Detected!" when HW-MS03 PIR sensor triggers
 - Displays "====================" when no motion detected
 
 **Row 2 (Sensor Readings)**:
-- Temperature (℃) with custom icon
-- Humidity (%) with custom icon  
-- Pressure (hPa) with custom icon
+- Temperature (🌡️) with custom icon
+- Humidity (💧) with custom icon  
+- Pressure (↕️) with custom icon
 
 **Row 3 (Air Quality)**:
 - Based on VOC index from SGP40:
@@ -273,13 +273,13 @@ The firmware creates custom LCD icons for a more intuitive display:
 
 | Icon | Description | CGRAM Index |
 |------|-------------|-------------|
-| | Temperature symbol | 0 |
-| | Humidity symbol | 1 |
-| | Pressure symbol | 2 |
-| | Decommissioned status | 3 |
-| | Commissioned status | 4 |
-| | Disconnected status | 5 |
-| | Connected status | 6 |
+| 🌡️ | Temperature symbol | 0 |
+| 💧 | Humidity symbol | 1 |
+| ↕️ | Pressure symbol | 2 |
+| ❌ | Decommissioned status | 3 |
+| ✔️ | Commissioned status | 4 |
+| ❌ | Disconnected status | 5 |
+| ✔️ | Connected status | 6 |
 
 ## Notes
 
